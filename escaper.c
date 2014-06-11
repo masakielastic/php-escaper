@@ -26,6 +26,7 @@
 #include "php_ini.h"
 #include "ext/standard/info.h"
 #include "php_escaper.h"
+#include "standard/html.h"
 
 /* If you declare any globals in php_escaper.h uncomment this:
 ZEND_DECLARE_MODULE_GLOBALS(escaper)
@@ -44,30 +45,28 @@ PHP_INI_END()
 */
 /* }}} */
 
-/* Remove the following function when you have successfully modified config.m4
-   so that your module can be compiled into PHP, it exists only for testing
-   purposes. */
-
-/* Every user-visible function in PHP should document itself in the source */
-/* {{{ proto string confirm_escaper_compiled(string arg)
-   Return a string to confirm that the module is compiled in */
-PHP_FUNCTION(confirm_escaper_compiled)
+PHP_FUNCTION(escape_html)
 {
-	char *arg = NULL;
-	int arg_len, len;
-	char *strg;
+	char *str = NULL;
+	char *encoding = "UTF-8";
+	int str_len = 0;
+	int encoding_len = 5;
+  size_t new_len;
+	long flags = ENT_COMPAT | ENT_SUBSTITUTE;
+  char *replaced;
+	zend_bool double_encode = 1;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &arg, &arg_len) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|s", &str, &str_len, &encoding, &encoding_len) == FAILURE) {
 		return;
 	}
 
-	len = spprintf(&strg, 0, "Congratulations! You have successfully modified ext/%.78s/config.m4. Module %.78s is now compiled into PHP.", "escaper", arg);
-	RETURN_STRINGL(strg, len, 0);
+	replaced = php_escape_html_entities_ex((unsigned char *) str, str_len, &new_len, 0, (int) flags, encoding, double_encode TSRMLS_CC);
+	RETVAL_STRINGL(replaced, (int)new_len, 0);
 }
-/* }}} */
-/* The previous line is meant for vim and emacs, so it can correctly fold and 
-   unfold functions in source code. See the corresponding marks just before 
-   function definition, where the functions purpose is also documented. Please 
+
+/* The previous line is meant for vim and emacs, so it can correctly fold and
+   unfold functions in source code. See the corresponding marks just before
+   function definition, where the functions purpose is also documented. Please
    follow this convention for the convenience of others editing your code.
 */
 
@@ -87,7 +86,7 @@ static void php_escaper_init_globals(zend_escaper_globals *escaper_globals)
  */
 PHP_MINIT_FUNCTION(escaper)
 {
-	/* If you have INI entries, uncomment these lines 
+	/* If you have INI entries, uncomment these lines
 	REGISTER_INI_ENTRIES();
 	*/
 	return SUCCESS;
@@ -142,7 +141,7 @@ PHP_MINFO_FUNCTION(escaper)
  * Every user visible function must have an entry in escaper_functions[].
  */
 const zend_function_entry escaper_functions[] = {
-	PHP_FE(confirm_escaper_compiled,	NULL)		/* For testing, remove later. */
+	PHP_FE(escape_html,	NULL)
 	PHP_FE_END	/* Must be the last line in escaper_functions[] */
 };
 /* }}} */
