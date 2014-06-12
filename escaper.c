@@ -27,6 +27,7 @@
 #include "ext/standard/info.h"
 #include "php_escaper.h"
 #include "standard/html.h"
+#include "ext/standard/php_smart_str.h"
 
 /* If you declare any globals in php_escaper.h uncomment this:
 ZEND_DECLARE_MODULE_GLOBALS(escaper)
@@ -34,6 +35,7 @@ ZEND_DECLARE_MODULE_GLOBALS(escaper)
 
 /* True global resources - no need for thread safety here */
 static int le_escaper;
+static const char digits[] = "0123456789abcdef";
 
 /* {{{ PHP_INI
  */
@@ -49,19 +51,94 @@ PHP_FUNCTION(escape_html)
 {
 	char *str = NULL;
 	char *encoding = "UTF-8";
-	int str_len = 0;
-	int encoding_len = 5;
-  size_t new_len;
+	int str_size = 0;
+	int encoding_size = 5;
+  size_t new_size;
 	long flags = ENT_COMPAT | ENT_SUBSTITUTE;
   char *replaced;
 	zend_bool double_encode = 1;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|s", &str, &str_len, &encoding, &encoding_len) == FAILURE) {
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|s", &str, &str_size, &encoding, &encoding_size) == FAILURE) {
 		return;
 	}
 
-	replaced = php_escape_html_entities_ex((unsigned char *) str, str_len, &new_len, 0, (int) flags, encoding, double_encode TSRMLS_CC);
-	RETVAL_STRINGL(replaced, (int)new_len, 0);
+	replaced = php_escape_html_entities_ex((unsigned char *) str, str_size, &new_size, 0, (int) flags, encoding, double_encode TSRMLS_CC);
+	RETVAL_STRINGL(replaced, (int) new_size, 0);
+}
+
+PHP_FUNCTION(escape_css)
+{
+    char *str = NULL;
+    char *encoding = "UTF-8";
+    int str_size = 0;
+    int encoding_size = 5;
+
+    size_t prev_pos = 0;
+    size_t pos = 0;
+    int status = 0;
+
+    unsigned int code_point;
+    unsigned short w1, w2;
+    smart_str buf = {0};
+
+    char *substitute = "\xEF\xBF\xBD";
+    size_t substitute_size = 3;
+
+    if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|s", &str, &str_size, &encoding, &encoding_size) == FAILURE) {
+        return;
+    }
+
+    while (pos < str_size) {
+
+        code_point = php_next_utf8_char((const unsigned char *) str, str_size, &pos, &status);
+
+        if (status == FAILURE) {
+
+            smart_str_appendl(&buf, "\xEF\xBF\xBD", 3);
+
+        } else {
+
+            if (
+            // [0-9]
+            (0x30 <= code_point && code_point <= 0x39)
+            // [A-Z]
+            | (0x41 <= code_point && code_point <= 0x5A)
+            // [a-z]
+            | (0x61 <= code_point && code_point <= 0x7A)) {
+
+                smart_str_appendc(&buf, str[pos - 1]);
+
+            } else if (code_point < 0x10000) {
+
+                smart_str_appendl(&buf, "\\", 1);
+                smart_str_appendc(&buf, digits[(code_point >> 12) & 0xf]);
+                smart_str_appendc(&buf, digits[(code_point >> 8) & 0xf]);
+                smart_str_appendc(&buf, digits[(code_point >> 4) & 0xf]);
+                smart_str_appendc(&buf, digits[(code_point & 0xf)]);
+
+            } else {
+                code_point -= 0x10000;
+                w1 = (unsigned short) ((code_point >> 10) | 0xd800);
+                w2 = (unsigned short) ((code_point & 0x3ff) | 0xdc00);
+                smart_str_appendl(&buf, "\\", 1);
+                smart_str_appendc(&buf, digits[(w1 >> 12) & 0xf]);
+                smart_str_appendc(&buf, digits[(w1 >> 8) & 0xf]);
+                smart_str_appendc(&buf, digits[(w1 >> 4) & 0xf]);
+                smart_str_appendc(&buf, digits[(w1 & 0xf)]);
+                smart_str_appendl(&buf, "\\", 1);
+                smart_str_appendc(&buf, digits[(w2 >> 12) & 0xf]);
+                smart_str_appendc(&buf, digits[(w2 >> 8) & 0xf]);
+                smart_str_appendc(&buf, digits[(w2 >> 4) & 0xf]);
+                smart_str_appendc(&buf, digits[(w2 & 0xf)]);
+            }
+
+        }
+    }
+
+    smart_str_0(&buf);
+    RETURN_STRINGL(buf.c, buf.len, 0);
+    smart_str_free(&buf);
+
 }
 
 /* The previous line is meant for vim and emacs, so it can correctly fold and
@@ -142,6 +219,7 @@ PHP_MINFO_FUNCTION(escaper)
  */
 const zend_function_entry escaper_functions[] = {
 	PHP_FE(escape_html,	NULL)
+  PHP_FE(escape_css,	NULL)
 	PHP_FE_END	/* Must be the last line in escaper_functions[] */
 };
 /* }}} */

@@ -67,7 +67,7 @@ ZEND_END_MODULE_GLOBALS(escaper)
 #endif	/* PHP_ESCAPER_H */
 
 PHP_FUNCTION(escape_html);
-
+PHP_FUNCTION(escape_css);
 /*
  * Local variables:
  * tab-width: 4
